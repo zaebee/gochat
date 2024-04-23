@@ -1,4 +1,4 @@
-package main
+package chat
 
 import (
 	"log"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/olzhasar/gochat/pkg/metrics"
 )
 
 const EMPTY_ROOM_TIMEOUT = 1 * time.Minute
@@ -58,7 +59,7 @@ func (h *Hub) Broadcast(message Message) {
 
 func (h *Hub) handleRegister(client *Client, room *Room) {
 	room.clients = append(room.clients, client)
-	clientCount.Inc()
+	metrics.ClientCount.Inc()
 	client.listen()
 }
 
@@ -79,7 +80,7 @@ func (h *Hub) handleUnregister(client *Client, room *Room) {
 
 	h.scheduleRoomTermination(room)
 
-	clientCount.Dec()
+	metrics.ClientCount.Dec()
 }
 
 func (h *Hub) handleBroadcast(message Message) {
@@ -88,11 +89,11 @@ func (h *Hub) handleBroadcast(message Message) {
 	for _, client := range message.room.clients {
 		if client != message.author {
 			client.write(encoded)
-			messagesBroadcastedCount.Inc()
+			metrics.MessagesBroadcastedCount.Inc()
 		}
 	}
 
-	messagesReceivedCount.Inc()
+	metrics.MessagesReceivedCount.Inc()
 }
 
 func (h *Hub) Run() {
@@ -159,7 +160,7 @@ func (h *Hub) CreateRoom() *Room {
 
 	h.scheduleRoomTermination(room)
 
-	roomCount.Inc()
+	metrics.RoomCount.Inc()
 
 	return room
 }
@@ -174,12 +175,13 @@ func (h *Hub) RoomCount() int {
 
 func (h *Hub) scheduleRoomTermination(room *Room) {
 	go func() {
-		time.Sleep(EMPTY_ROOM_TIMEOUT)
-		if room.ClientCount() > 0 || h.rooms[room.ID] == nil {
-			return
-		}
-		delete(h.rooms, room.ID)
-		roomCount.Dec()
+		time.AfterFunc(EMPTY_ROOM_TIMEOUT, func() {
+			if room.ClientCount() > 0 || h.rooms[room.ID] == nil {
+				return
+			}
+			delete(h.rooms, room.ID)
+			metrics.RoomCount.Dec()
+		})
 	}()
 }
 
